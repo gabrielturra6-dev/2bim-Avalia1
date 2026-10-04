@@ -1,46 +1,81 @@
-// script.js
-// Versao inicial: todo o trabalho acontece no navegador.
-// A tarefa consiste em levar gerarDesenho para o servidor (Pages Functions)
-// e fazer esta pagina apenas enviar o numero e exibir a resposta.
+const GOOGLE_CLIENT_ID =
+  "7627808438-reg42t9afg4666dq7onk2li7d8qibhn3.apps.googleusercontent.com";
 
-import { gerarDesenho, numeroValido } from "./desenho.js";
+let idToken = null;
+let svgAtual = null;
 
-const formulario = document.getElementById("formulario");
-const campoNumero = document.getElementById("numero");
-const campoEmail = document.getElementById("email");
-const area = document.getElementById("desenho");
-const mensagem = document.getElementById("mensagem");
+const erroEl = document.getElementById("erro");
+const saida = document.getElementById("resultado");
 const botaoBaixar = document.getElementById("baixar");
+const usuarioEl = document.getElementById("usuario");
 
-let svgAtual = "";
-
-formulario.addEventListener("submit", (evento) => {
-  evento.preventDefault();
-  mensagem.textContent = "";
-
-  const numero = Number(campoNumero.value);
-  const email = campoEmail.value.trim();
-
-  if (!numeroValido(numero)) {
-    mensagem.textContent = "Digite um inteiro entre 1 e 100.";
-    return;
+function aoLogar(resp) {
+  idToken = resp.credential;
+  erroEl.textContent = "";
+  // Só para exibir na tela. O servidor nunca usa este valor.
+  try {
+    const payload = JSON.parse(
+      atob(idToken.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))
+    );
+    usuarioEl.textContent = "Logado como " + payload.email;
+  } catch {
+    usuarioEl.textContent = "Login realizado.";
   }
-  if (email === "") {
-    mensagem.textContent = "Informe um e-mail.";
-    return;
-  }
+}
 
-  svgAtual = gerarDesenho(numero, email);
-  area.innerHTML = svgAtual;
-  botaoBaixar.hidden = false;
+window.addEventListener("load", () => {
+  google.accounts.id.initialize({
+    client_id: GOOGLE_CLIENT_ID,
+    callback: aoLogar,
+  });
+  google.accounts.id.renderButton(
+    document.getElementById("botao-google"),
+    { theme: "outline", size: "large" }
+  );
+});
+
+document.getElementById("form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  erroEl.textContent = "";
+  const numero = Number(document.getElementById("numero").value);
+
+  try {
+    const resp = await fetch("/api/desenho", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(idToken ? { Authorization: "Bearer " + idToken } : {}),
+      },
+      body: JSON.stringify({ numero }),
+    });
+
+    if (resp.status === 400) {
+      erroEl.textContent = "Erro 400: informe um número inteiro entre 1 e 100.";
+      return;
+    }
+    if (resp.status === 401) {
+      erroEl.textContent = "Erro 401: faça login com o Google (ou entre novamente).";
+      return;
+    }
+    if (!resp.ok) {
+      erroEl.textContent = "Erro inesperado (" + resp.status + ").";
+      return;
+    }
+
+    svgAtual = await resp.text();
+    saida.innerHTML = svgAtual;
+    botaoBaixar.hidden = false;
+  } catch {
+    erroEl.textContent = "Falha de rede ao chamar o servidor.";
+  }
 });
 
 botaoBaixar.addEventListener("click", () => {
-  const arquivo = new Blob([svgAtual], { type: "image/svg+xml" });
-  const url = URL.createObjectURL(arquivo);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = "exemplo.svg";
-  link.click();
-  URL.revokeObjectURL(url);
+  if (!svgAtual) return;
+  const blob = new Blob([svgAtual], { type: "image/svg+xml" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "exemplo.svg";
+  a.click();
+  URL.revokeObjectURL(a.href);
 });
