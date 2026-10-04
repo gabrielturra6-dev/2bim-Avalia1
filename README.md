@@ -22,6 +22,6 @@ Framework preset: `None`. Build command: vazio. Build output directory: `public`
 
 ## Identificação (preencha após o fork)
 
-Nome: 
+Nome: Gabriel de Azevedo Goldman Turra
 RA: 2025207029
 URL: https://2bim-avalia1-7jw.pages.dev
